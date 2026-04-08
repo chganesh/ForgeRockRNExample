@@ -6,7 +6,8 @@ type LoginResult = {
 };
 
 type ForgerockBiometricNative = {
-  loginWithBiometrics(username: string): Promise<LoginResult>;
+  registerWithBiometrics(username: string, journeyName: string): Promise<LoginResult>;
+  loginWithBiometrics(username: string, journeyName: string): Promise<LoginResult>;
 };
 
 const { ForgerockBiometric } = NativeModules as {
@@ -23,9 +24,23 @@ function getModule(): ForgerockBiometricNative {
 }
 
 export const ForgerockBiometric = {
-  loginWithBiometrics(username: string) {
+  defaultRegisterJourney: 'rn-bio-register',
+  defaultLoginJourney: 'rn-bio-login',
+
+  registerWithBiometrics(username: string, journeyName?: string) {
     // Username is passed to native in-memory only; do not persist it.
-    return getModule().loginWithBiometrics(username);
+    return getModule().registerWithBiometrics(
+      username,
+      journeyName ?? ForgerockBiometric.defaultRegisterJourney,
+    );
+  },
+
+  loginWithBiometrics(username: string, journeyName?: string) {
+    // Username is passed to native in-memory only; do not persist it.
+    return getModule().loginWithBiometrics(
+      username,
+      journeyName ?? ForgerockBiometric.defaultLoginJourney,
+    );
   },
 };
 

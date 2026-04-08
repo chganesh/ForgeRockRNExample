@@ -15,7 +15,7 @@ export default function App() {
   const [username, setUsername] = React.useState('');
   const [busy, setBusy] = React.useState(false);
 
-  async function onBiometricLogin() {
+  async function run(action: 'register' | 'login') {
     // Keep username in-memory only; do not persist it.
     const u = username.trim();
     if (!u) {
@@ -25,7 +25,10 @@ export default function App() {
 
     setBusy(true);
     try {
-      const result = await ForgerockBiometric.loginWithBiometrics(u);
+      const result =
+        action === 'register'
+          ? await ForgerockBiometric.registerWithBiometrics(u)
+          : await ForgerockBiometric.loginWithBiometrics(u);
       Alert.alert('Success', JSON.stringify(result, null, 2));
       setUsername(''); // clear after use
     } catch (e: any) {
@@ -58,7 +61,18 @@ export default function App() {
         <TouchableOpacity
           disabled={busy}
           style={[styles.button, busy && styles.buttonDisabled]}
-          onPress={onBiometricLogin}>
+          onPress={() => run('register')}>
+          {busy ? (
+            <ActivityIndicator />
+          ) : (
+            <Text style={styles.buttonText}>Register Biometrics</Text>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          disabled={busy}
+          style={[styles.buttonSecondary, busy && styles.buttonDisabled]}
+          onPress={() => run('login')}>
           {busy ? (
             <ActivityIndicator />
           ) : (
@@ -93,6 +107,12 @@ const styles = StyleSheet.create({
   button: {
     marginTop: 6,
     backgroundColor: '#4E6CFF',
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  buttonSecondary: {
+    backgroundColor: '#23305A',
     paddingVertical: 12,
     borderRadius: 12,
     alignItems: 'center',

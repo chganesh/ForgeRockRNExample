@@ -10,27 +10,47 @@ class ForgerockBiometric: NSObject {
     true
   }
 
-  @objc(loginWithBiometrics:resolver:rejecter:)
-  func loginWithBiometrics(
+  @objc(registerWithBiometrics:journeyName:resolver:rejecter:)
+  func registerWithBiometrics(
     _ username: String,
+    journeyName: String,
     resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
+    runJourney(username: username, journeyName: journeyName, action: "register", resolve: resolve, reject: reject)
+  }
+
+  @objc(loginWithBiometrics:journeyName:resolver:rejecter:)
+  func loginWithBiometrics(
+    _ username: String,
+    journeyName: String,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    runJourney(username: username, journeyName: journeyName, action: "login", resolve: resolve, reject: reject)
+  }
+
+  private func runJourney(
+    username: String,
+    journeyName: String,
+    action: String,
+    resolve: @escaping RCTPromiseResolveBlock,
+    reject: @escaping RCTPromiseRejectBlock
+  ) {
     DispatchQueue.main.async {
-      // FRAuth.start() must be called before FRUser.login().
-      // Configuration is expected to be provided via your iOS app's plist/config.
+      // FRAuth.start() must be called prior to authenticate.
       FRAuth.start()
 
-      FRUser.login { user, node, error in
+      FRSession.authenticate(authIndexValue: journeyName, authIndexType: "service") { token, node, error in
         if let error {
           reject("FR_AUTH", error.localizedDescription, error)
           return
         }
 
-        if let user {
+        if token != nil {
           resolve([
             "platform": "ios",
-            "message": "Authenticated (FRUser session established).",
+            "message": "Success (\(action)) - session established for journey '\(journeyName)'.",
           ])
           return
         }
@@ -40,7 +60,7 @@ class ForgerockBiometric: NSObject {
           return
         }
 
-        self.handleNode(node, username: username, resolve: resolve, reject: reject)
+        self.handleNode(node, username: username, journeyName: journeyName, action: action, resolve: resolve, reject: reject)
       }
     }
   }
@@ -48,6 +68,8 @@ class ForgerockBiometric: NSObject {
   private func handleNode(
     _ node: Node,
     username: String,
+    journeyName: String,
+    action: String,
     resolve: @escaping RCTPromiseResolveBlock,
     reject: @escaping RCTPromiseRejectBlock
   ) {
@@ -64,15 +86,15 @@ class ForgerockBiometric: NSObject {
           preferImmediatelyAvailableCredentials: false,
           usePasskeysIfAvailable: false,
           onSuccess: { _ in
-            node.next { user, nextNode, error in
+            node.next { token, nextNode, error in
               if let error {
                 reject("FR_NEXT", error.localizedDescription, error)
                 return
               }
-              if let user {
+              if token != nil {
                 resolve([
                   "platform": "ios",
-                  "message": "Authenticated (FRUser session established).",
+                  "message": "Success (\(action)) - session established for journey '\(journeyName)'.",
                 ])
                 return
               }
@@ -80,7 +102,7 @@ class ForgerockBiometric: NSObject {
                 reject("FR_NODE", "No next node returned from SDK.", nil)
                 return
               }
-              self.handleNode(nextNode, username: username, resolve: resolve, reject: reject)
+              self.handleNode(nextNode, username: username, journeyName: journeyName, action: action, resolve: resolve, reject: reject)
             }
           },
           onError: { error in
@@ -91,15 +113,15 @@ class ForgerockBiometric: NSObject {
       }
     }
 
-    node.next { user, nextNode, error in
+    node.next { token, nextNode, error in
       if let error {
         reject("FR_NEXT", error.localizedDescription, error)
         return
       }
-      if let user {
+      if token != nil {
         resolve([
           "platform": "ios",
-          "message": "Authenticated (FRUser session established).",
+          "message": "Success (\(action)) - session established for journey '\(journeyName)'.",
         ])
         return
       }
@@ -107,7 +129,7 @@ class ForgerockBiometric: NSObject {
         reject("FR_NODE", "No next node returned from SDK.", nil)
         return
       }
-      self.handleNode(nextNode, username: username, resolve: resolve, reject: reject)
+      self.handleNode(nextNode, username: username, journeyName: journeyName, action: action, resolve: resolve, reject: reject)
     }
   }
 }
