@@ -1,3 +1,58 @@
+## ForgeRock Biometric React Native Sample
+
+This is a minimal React Native app that demonstrates:
+
+- A **username field that is never persisted** (only held in memory and cleared after login).
+- A small React Native **native module** (`ForgerockBiometric`) that uses the **ForgeRock/Ping native SDK** to continue a journey and trigger **WebAuthn biometric authentication** on Android.
+
+### Prerequisites (Android)
+
+- **JDK 17+** (Gradle 9 requires it). Your current `java -version` shows Java 11.
+- Android SDK + emulator/device
+
+### Configure ForgeRock/Ping (Android)
+
+The ForgeRock Android SDK expects server configuration to be present in Android resources (URL/realm/tree). Add the values required by your environment in:
+
+- `android/app/src/main/res/values/strings.xml`
+
+Then run:
+
+```bash
+cd android
+./gradlew assembleDebug
+```
+
+### Run
+
+```bash
+npm start
+```
+
+In another terminal:
+
+```bash
+npm run android
+```
+
+### iOS notes
+
+The `ios/Podfile` includes `FRAuth` and `FRAuthenticator`, but **CocoaPods must be installed and run on macOS**:
+
+```bash
+cd ios
+pod install
+```
+
+### GitHub push
+
+From this folder:
+
+```bash
+git remote add origin <your-repo-url>
+git push -u origin main
+```
+
 This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
 
 # Getting Started
