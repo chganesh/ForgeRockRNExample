@@ -1,13 +1,37 @@
 import { NativeModules } from 'react-native';
 
-type LoginResult = {
+/**
+ * Generic operation result from native module.
+ * The SDK handles all WebAuthn complexity internally.
+ */
+export type OperationResult = {
   platform: 'android' | 'ios';
   message: string;
+  sessionToken?: string;
 };
 
 type ForgerockBiometricNative = {
-  registerWithBiometrics(username: string, journeyName: string): Promise<LoginResult>;
-  loginWithBiometrics(username: string, journeyName: string): Promise<LoginResult>;
+  /**
+   * Register with WebAuthn biometric.
+   * The SDK's WebAuthnRegistrationCallback handles:
+   * - Challenge extraction from callback
+   * - FIDO2 / AuthenticationServices API calls
+   * - Biometric prompts
+   * - Attestation creation
+   * - Journey continuation
+   */
+  registerWithBiometrics(username: string, journeyName: string): Promise<OperationResult>;
+
+  /**
+   * Authenticate with WebAuthn biometric.
+   * The SDK's WebAuthnAuthenticationCallback handles:
+   * - Challenge extraction
+   * - FIDO2 / AuthenticationServices API calls
+   * - Biometric prompts
+   * - Assertion signing
+   * - Journey continuation
+   */
+  loginWithBiometrics(username: string, journeyName: string): Promise<OperationResult>;
 };
 
 const { ForgerockBiometric: NativeForgerockBiometric } = NativeModules as {
@@ -30,16 +54,24 @@ export const ForgerockBiometric = {
   defaultRegisterJourney: DEFAULT_REGISTER_JOURNEY,
   defaultLoginJourney: DEFAULT_LOGIN_JOURNEY,
 
+  /**
+   * Register with WebAuthn biometric.
+   * @param username Username for registration
+   * @param journeyName ForgeRock journey/tree name
+   */
   registerWithBiometrics(username: string, journeyName?: string) {
-    // Username is passed to native in-memory only; do not persist it.
     return getModule().registerWithBiometrics(
       username,
       journeyName ?? DEFAULT_REGISTER_JOURNEY,
     );
   },
 
+  /**
+   * Authenticate with WebAuthn biometric.
+   * @param username Username for authentication
+   * @param journeyName ForgeRock journey/tree name
+   */
   loginWithBiometrics(username: string, journeyName?: string) {
-    // Username is passed to native in-memory only; do not persist it.
     return getModule().loginWithBiometrics(
       username,
       journeyName ?? DEFAULT_LOGIN_JOURNEY,
