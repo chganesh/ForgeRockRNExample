@@ -4,9 +4,7 @@ import {
   FRLoginFailure,
   FRLoginSuccess,
   FRStep,
-  FRWebAuthn,
   StepType,
-  WebAuthnStepType,
 } from '@forgerock/javascript-sdk';
 import {
   configureForgeRockJs,
@@ -24,18 +22,6 @@ export type JsRegistrationResult =
   | {
       kind: 'login_failure';
       message?: string;
-    }
-  | {
-      kind: 'handoff_native_webauthn';
-      webAuthnKind: 'registration' | 'authentication';
-      authId?: string;
-      detail: string;
-    }
-  | {
-      kind: 'native_biometric_completed';
-      webAuthnKind: 'registration' | 'authentication';
-      authId?: string;
-      native: { platform: string; message: string };
     }
   | {
       kind: 'error';
@@ -65,11 +51,6 @@ function fillKnownCallbacks(step: FRStep, username: string): void {
 export type JourneyOptions = {
   /** Defaults to registration journey from config. */
   journeyName?: string;
-  /**
-   * When the JavaScript SDK receives a WebAuthn step, Hermes cannot run browser WebAuthn.
-   * If true, this automatically invokes the native ForgeRock SDK (platform biometrics / WebAuthn).
-   */
-  triggerNativeOnWebAuthnCallback?: boolean;
   /** If you already called `configureForgeRockJs` in App.tsx, skip re-applying samples. */
   skipConfigure?: boolean;
   /** Merged into `configureForgeRockJs` when `skipConfigure` is false. */
@@ -77,11 +58,20 @@ export type JourneyOptions = {
 };
 
 /**
- * Runs the journey with the JavaScript SDK: handles Name / HiddenValue callbacks until
- * LoginSuccess, LoginFailure, or a WebAuthn step.
- *
- * If `triggerNativeOnWebAuthnCallback` is true, WebAuthn steps trigger the native module:
- * registration → `registerWithBiometrics`, authentication → `loginWithBiometrics`.
+ * Runs the journey with the JavaScript SDK + Native WebAuthn.
+ * 
+ * The flow:
+ * 1. JS SDK calls AM journey
+ * 2. JS SDK encounters WebAuthnRegistrationCallback or WebAuthnAuthenticationCallback
+ * 3. SDK's callback handlers manage WebAuthn completely:
+ *    - Extract challenge
+ *    - Call FIDO2 / AuthenticationServices
+ *    - Show biometric prompt
+ *    - Handle attestation/assertion
+ *    - Continue journey
+ * 4. Journey completes with success or failure
+ * 
+ * No manual payload extraction needed!
  */
 export async function runJourneyWithJsThenNativeBiometric(
   username: string,
@@ -119,61 +109,15 @@ export async function runJourneyWithJsThenNativeBiometric(
         };
       }
 
+      // Fill known callbacks and proceed
       const step = current as FRStep;
-      const webAuthnKind = FRWebAuthn.getWebAuthnStepType(step);
-      const authId = step.payload.authId;
-
-      if (webAuthnKind === WebAuthnStepType.Registration) {
-        if (options.triggerNativeOnWebAuthnCallback) {
-          const native = await ForgerockBiometric.registerWithBiometrics(
-            username,
-            journeyName,
-          );
-          return {
-            kind: 'native_biometric_completed',
-            webAuthnKind: 'registration',
-            authId,
-            native,
-          };
-        }
-        return {
-          kind: 'handoff_native_webauthn',
-          webAuthnKind: 'registration',
-          authId,
-          detail:
-            'WebAuthn registration callback from AM — use native ForgeRock SDK for platform biometrics.',
-        };
-      }
-
-      if (webAuthnKind === WebAuthnStepType.Authentication) {
-        if (options.triggerNativeOnWebAuthnCallback) {
-          const native = await ForgerockBiometric.loginWithBiometrics(
-            username,
-            journeyName,
-          );
-          return {
-            kind: 'native_biometric_completed',
-            webAuthnKind: 'authentication',
-            authId,
-            native,
-          };
-        }
-        return {
-          kind: 'handoff_native_webauthn',
-          webAuthnKind: 'authentication',
-          authId,
-          detail:
-            'WebAuthn authentication callback from AM — use native ForgeRock SDK for platform biometrics.',
-        };
-      }
-
       fillKnownCallbacks(step, username);
       current = await FRAuth.next(step);
     }
 
     return {
       kind: 'error',
-      message: `Stopped after ${MAX_STEPS} steps — add handlers for more callback types or verify the journey.`,
+      message: `Stopped after ${MAX_STEPS} steps — verify the journey configuration.`,
     };
   } catch (e) {
     return {
@@ -187,7 +131,5 @@ export async function runJourneyWithJsThenNativeBiometric(
 export async function runRegistrationJsUntilNativeBiometric(
   username: string,
 ): Promise<JsRegistrationResult> {
-  return runJourneyWithJsThenNativeBiometric(username, {
-    triggerNativeOnWebAuthnCallback: false,
-  });
+  return runJourneyWithJsThenNativeBiometric(username);
 }

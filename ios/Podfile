@@ -34,5 +34,13 @@ target 'ForgerockBioSample' do
       :mac_catalyst_enabled => false,
       # :ccache_enabled => true
     )
+    
+    # Ensure iOS 15.0+ deployment target (WebAuthn requires iOS 16.0+)
+    installer.pods_project.targets.each do |target|
+      if target.respond_to?(:deployment_target=)
+        target.deployment_target = '15.0'
+      end
+    end
   end
+end
 end
