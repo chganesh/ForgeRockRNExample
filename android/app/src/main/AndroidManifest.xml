@@ -24,4 +24,10 @@
         </intent-filter>
       </activity>
     </application>
+
+
+    <!-- Required for WebAuthn Digital Asset Links -->
+  <meta-data
+    android:name="asset_statements"
+    android:resource="@string/asset_statements" />
 </manifest>
