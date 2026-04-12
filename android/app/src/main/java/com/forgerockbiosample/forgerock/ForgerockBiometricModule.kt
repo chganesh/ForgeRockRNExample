@@ -1,183 +1,161 @@
-package com.forgerockbiosample.forgerock
+package com.yourapp
 
-import android.content.Context
-import com.facebook.react.bridge.Promise
-import com.facebook.react.bridge.ReactApplicationContext
-import com.facebook.react.bridge.ReactContextBaseJavaModule
-import com.facebook.react.bridge.ReactMethod
-import com.facebook.react.bridge.WritableMap
-import com.facebook.react.bridge.Arguments
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import org.forgerock.android.auth.FRAuth
-import org.forgerock.android.auth.FRSession
-import org.forgerock.android.auth.Node
-import org.forgerock.android.auth.NodeListener
-import org.forgerock.android.auth.callback.NameCallback
+import android.os.Build
+import com.facebook.react.bridge.*
+import org.forgerock.android.auth.*
 import org.forgerock.android.auth.callback.WebAuthnAuthenticationCallback
 import org.forgerock.android.auth.callback.WebAuthnRegistrationCallback
+import org.forgerock.android.auth.webauthn.WebAuthnKeySelector
+import org.forgerock.android.auth.webauthn.WebAuthnResponseException
+import org.json.JSONObject
 
-/**
- * Native bridge for WebAuthn biometric operations.
- * Uses ForgeRock SDK's built-in WebAuthn callback handlers.
- * 
- * The SDK automatically handles:
- * - Challenge extraction
- * - FIDO2 / WebAuthn API calls
- * - Biometric prompts
- * - Attestation/Assertion creation
- * - Journey continuation
- */
-class ForgerockBiometricModule(
-  private val reactContext: ReactApplicationContext,
-) : ReactContextBaseJavaModule(reactContext) {
+class WebAuthnBridgeModule(private val reactContext: ReactApplicationContext)
+    : ReactContextBaseJavaModule(reactContext) {
 
-  override fun getName(): String = "ForgerockBiometric"
+    override fun getName(): String = "WebAuthnBridge"
 
-  /**
-   * Register with WebAuthn biometric.
-   * The SDK's WebAuthnRegistrationCallback handles the entire flow.
-   */
-  @ReactMethod
-  fun registerWithBiometrics(
-    username: String,
-    journeyName: String,
-    promise: Promise
-  ) {
-    CoroutineScope(Dispatchers.Main).launch {
-      try {
-        startJourney(
-          username = username,
-          journeyName = journeyName,
-          action = "register",
-          promise = promise
-        )
-      } catch (e: Exception) {
-        promise.reject("FR_REGISTER", e.message ?: "Unknown error", e)
-      }
-    }
-  }
+    // Holds the reconstructed Node from JS payload
+    private var currentNode: Node? = null
 
-  /**
-   * Authenticate with WebAuthn biometric.
-   * The SDK's WebAuthnAuthenticationCallback handles the entire flow.
-   */
-  @ReactMethod
-  fun loginWithBiometrics(
-    username: String,
-    journeyName: String,
-    promise: Promise
-  ) {
-    CoroutineScope(Dispatchers.Main).launch {
-      try {
-        startJourney(
-          username = username,
-          journeyName = journeyName,
-          action = "login",
-          promise = promise
-        )
-      } catch (e: Exception) {
-        promise.reject("FR_LOGIN", e.message ?: "Unknown error", e)
-      }
-    }
-  }
-
-  /**
-   * Start the authentication journey.
-   * The SDK's callback handlers manage WebAuthn automatically.
-   * 
-   * When WebAuthnRegistrationCallback or WebAuthnAuthenticationCallback is encountered:
-   * - SDK extracts challenge
-   * - SDK calls FIDO2 API
-   * - SDK shows biometric prompt
-   * - SDK automatically continues journey
-   * - JS receives final result (success/failure)
-   */
-  private fun startJourney(
-    username: String,
-    journeyName: String,
-    action: String,
-    promise: Promise
-  ) {
-    val appContext = reactContext.applicationContext
-
-    try {
-      FRAuth.start(appContext)
-    } catch (e: Exception) {
-      promise.reject("FR_SDK_INIT", e.message ?: "SDK init failed", e)
-      return
-    }
-
-    val listener = object : NodeListener<FRSession> {
-      override fun onSuccess(result: FRSession) {
-        val response: WritableMap = Arguments.createMap().apply {
-          putString("platform", "android")
-          putString("message", "Success ($action) - biometric authentication completed")
-          putString("sessionToken", result.sessionToken)
-        }
-        promise.resolve(response)
-      }
-
-      override fun onException(e: Exception) {
-        promise.reject("FR_AUTH_JOURNEY", e.message ?: "Journey failed", e)
-      }
-
-      override fun onCallbackReceived(node: Node) {
+    // ─────────────────────────────────────────────────────────────────────────
+    // JS calls this first, passing the raw step payload as JSON string
+    // ─────────────────────────────────────────────────────────────────────────
+    @ReactMethod
+    fun setCurrentNode(nodeJSON: String, promise: Promise) {
         try {
-          val callbacks = node.callbacks
-          for (cb in callbacks) {
-            when (cb) {
-              // SDK handles NameCallback for username
-              is NameCallback -> cb.setName(username)
-              
-              // SDK's WebAuthnRegistrationCallback handles FIDO2 internally
-              is WebAuthnRegistrationCallback -> {
-                CoroutineScope(Dispatchers.Main).launch {
-                  try {
-                    // Simple one-liner: SDK does EVERYTHING
-                    // - Extracts challenge from callback
-                    // - Calls FIDO2 API
-                    // - Shows biometric prompt
-                    // - Handles attestation
-                    // - Validates and continues journey automatically
-                    cb.register(appContext, node)
-                    // No need to manually call node.next() - SDK does it
-                  } catch (e: Exception) {
-                    promise.reject("FR_WEBAUTHN_REGISTER", e.message ?: "WebAuthn registration failed", e)
-                  }
-                }
-                return
-              }
-              
-              // SDK's WebAuthnAuthenticationCallback handles FIDO2 internally
-              is WebAuthnAuthenticationCallback -> {
-                CoroutineScope(Dispatchers.Main).launch {
-                  try {
-                    // Simple one-liner: SDK does EVERYTHING
-                    // - Extracts challenge from callback
-                    // - Calls FIDO2 API
-                    // - Shows biometric prompt
-                    // - Handles assertion
-                    // - Validates and continues journey automatically
-                    cb.authenticate(appContext, node)
-                    // No need to manually call node.next() - SDK does it
-                  } catch (e: Exception) {
-                    promise.reject("FR_WEBAUTHN_AUTH", e.message ?: "WebAuthn authentication failed", e)
-                  }
-                }
-                return
-              }
-            }
-          }
-          node.next(appContext, this)
+            FRAuth.start(reactContext)
         } catch (e: Exception) {
-          promise.reject("FR_NODE_CALLBACK", e.message ?: "Callback processing failed", e)
+            // Already started — ignore
         }
-      }
+
+        try {
+            val json = JSONObject(nodeJSON)
+            // Node can be constructed from its raw JSON representation
+            // This is how the Android SDK deserialises nodes internally
+            val node = Node.fromJson(json)
+            currentNode = node
+            promise.resolve(WritableNativeMap().apply {
+                putBoolean("success", true)
+            })
+        } catch (e: Exception) {
+            promise.reject("NODE_PARSE_ERROR", "Failed to parse node: ${e.message}", e)
+        }
     }
 
-    FRSession.authenticate(appContext, journeyName, listener)
-  }
-}
+    // ─────────────────────────────────────────────────────────────────────────
+    // BIOMETRIC REGISTRATION
+    // ─────────────────────────────────────────────────────────────────────────
+    @ReactMethod
+    fun registerBiometric(options: ReadableMap, promise: Promise) {
+        val activity = currentActivity ?: run {
+            promise.reject("NO_ACTIVITY", "No foreground activity")
+            return
+        }
 
+        val node = currentNode ?: run {
+            promise.reject("NO_NODE", "Call setCurrentNode before registerBiometric")
+            return
+        }
+
+        val deviceName = if (options.hasKey("deviceName"))
+            options.getString("deviceName") ?: Build.MODEL
+        else Build.MODEL
+
+        val registrationCallback = node.getCallback(WebAuthnRegistrationCallback::class.java)
+            ?: run {
+                promise.reject("CALLBACK_NOT_FOUND", "WebAuthnRegistrationCallback not found")
+                return
+            }
+
+        // Pass node → SDK handles HiddenValueCallback + node.next() internally
+        registrationCallback.register(
+            activity,
+            deviceName,
+            node,
+            object : FRListener<Void> {
+                override fun onSuccess(result: Void?) {
+                    currentNode = null
+                    promise.resolve(WritableNativeMap().apply {
+                        putBoolean("success", true)
+                        putString("type", "WebAuthnRegistrationSuccess")
+                    })
+                }
+                override fun onException(e: Exception) {
+                    currentNode = null
+                    // Resolve so JS can call FRAuth.next() for AM fallback
+                    promise.resolve(WritableNativeMap().apply {
+                        putBoolean("success", false)
+                        putString("type", "WebAuthnRegistrationError")
+                        putString("errorCode", mapError(e))
+                        putString("message", e.message ?: "")
+                    })
+                }
+            }
+        )
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // BIOMETRIC AUTHENTICATION
+    // ─────────────────────────────────────────────────────────────────────────
+    @ReactMethod
+    fun authenticateBiometric(options: ReadableMap, promise: Promise) {
+        val activity = currentActivity ?: run {
+            promise.reject("NO_ACTIVITY", "No foreground activity")
+            return
+        }
+
+        val node = currentNode ?: run {
+            promise.reject("NO_NODE", "Call setCurrentNode before authenticateBiometric")
+            return
+        }
+
+        val authCallback = node.getCallback(WebAuthnAuthenticationCallback::class.java)
+            ?: run {
+                promise.reject("CALLBACK_NOT_FOUND", "WebAuthnAuthenticationCallback not found")
+                return
+            }
+
+        authCallback.authenticate(
+            activity,
+            node,
+            WebAuthnKeySelector.DEFAULT,
+            object : FRListener<Void> {
+                override fun onSuccess(result: Void?) {
+                    currentNode = null
+                    promise.resolve(WritableNativeMap().apply {
+                        putBoolean("success", true)
+                        putString("type", "WebAuthnAuthSuccess")
+                    })
+                }
+                override fun onException(e: Exception) {
+                    currentNode = null
+                    promise.resolve(WritableNativeMap().apply {
+                        putBoolean("success", false)
+                        putString("type", "WebAuthnAuthError")
+                        putString("errorCode", mapError(e))
+                        putString("message", e.message ?: "")
+                    })
+                }
+            }
+        )
+    }
+
+    private fun mapError(e: Exception): String {
+        if (e is WebAuthnResponseException) {
+            return when (e.errorCode) {
+                com.google.android.gms.fido.fido2.api.common.ErrorCode.NOT_SUPPORTED_ERR
+                    -> "BIOMETRIC_UNSUPPORTED"
+                com.google.android.gms.fido.fido2.api.common.ErrorCode.NOT_ALLOWED_ERR
+                    -> "BIOMETRIC_NOT_ALLOWED"
+                com.google.android.gms.fido.fido2.api.common.ErrorCode.INVALID_STATE_ERR
+                    -> "BIOMETRIC_INVALID_STATE"
+                com.google.android.gms.fido.fido2.api.common.ErrorCode.ABORT_ERR
+                    -> "BIOMETRIC_CANCELLED"
+                else -> "BIOMETRIC_CLIENT_ERROR"
+            }
+        }
+        return if (e.message?.contains("cancel", ignoreCase = true) == true)
+            "BIOMETRIC_CANCELLED"
+        else "BIOMETRIC_CLIENT_ERROR"
+    }
+}
